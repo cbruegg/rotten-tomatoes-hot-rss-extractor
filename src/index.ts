@@ -17,13 +17,18 @@ import { Feed } from 'feed';
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const cache = caches.default;
+
+		const parsedRequestUrl = new URL(request.url);
+		if (parsedRequestUrl.pathname === '/clearcache') {
+			await cache.delete(request);
+			return new Response('Cleared cache.');
+		}
+
 		const match = await cache.match(request);
 		if (match !== undefined) {
 			console.log('Returning from cache!');
 			return match;
 		}
-
-		const parsedRequestUrl = new URL(request.url);
 
 		let upstreamUrl: string;
 		let typeOfFeed: string;
@@ -99,18 +104,24 @@ function toFeed(elems: Element[], typeOfFeed: string, linkToSelf: string, upstre
 		link: linkToSelf,
 	});
 
-	elems.forEach((el) => {
+	elems.forEach((el, idx) => {
 		feed.addItem({
 			title: `${el.title} (${el.timeOfRelease}, ${el.tomatoMeter})`,
 			id: el.url!,
 			link: el.url!,
 			description: `${el.synopsis}<br/>${el.starringText}<br/>${el.directorText}`,
-			date: new Date(0),
+			date: todayMinusDays(idx),
 			image: el.previewImageUrl,
 		});
 	});
 
 	return feed;
+}
+
+function todayMinusDays(days: number): Date {
+	const date = new Date();
+	date.setDate(date.getDate() - days);
+	return date;
 }
 
 function removeParantheses(str: string | undefined): string | undefined {
