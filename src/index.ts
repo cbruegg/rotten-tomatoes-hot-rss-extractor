@@ -11,13 +11,18 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-// TODO Caching
-
 import { HTMLElement, parse as parseHTML } from 'node-html-parser';
 import { Feed } from 'feed';
 
 export default {
 	async fetch(request, env, ctx): Promise<Response> {
+		const cache = caches.default;
+		const match = await cache.match(request);
+		if (match !== undefined) {
+			console.log('Returning from cache!');
+			return match;
+		}
+
 		const parsedRequestUrl = new URL(request.url);
 
 		let upstreamUrl: string;
@@ -49,7 +54,14 @@ export default {
 		const feed = toFeed(elements, typeOfFeed, request.url, upstreamUrl);
 		// const json = JSON.stringify(elements, null, 4);
 
-		return new Response(feed.rss2());
+		console.log('Serving fresh response');
+		const response = new Response(feed.rss2(), {
+			headers: {
+				'Cache-Control': 'max-age=3600',
+			},
+		});
+		await cache.put(request, response.clone());
+		return response;
 	},
 } satisfies ExportedHandler<Env>;
 
@@ -78,13 +90,13 @@ async function parseElements(dom: HTMLElement): Promise<Element[]> {
 	}));
 }
 
-function toFeed(elems: Element[], typeOfFeed: string, linkToSelf: string, upstreamUrl:string): Feed {
+function toFeed(elems: Element[], typeOfFeed: string, linkToSelf: string, upstreamUrl: string): Feed {
 	const feed = new Feed({
 		title: `Hot on RottenTomatoes: ${typeOfFeed}`,
 		id: `hot-rottentomatoes-${typeOfFeed}`,
 		description: `RSS version of ${upstreamUrl}`,
 		copyright: 'Same as RottenTomatoes',
-		link: linkToSelf
+		link: linkToSelf,
 	});
 
 	elems.forEach((el) => {
